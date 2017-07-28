@@ -15,5 +15,5 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/include
 # Workaround for yarp_add_idl problems
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(${PROJECT_NAME} ${YARP_LIBRARIES} idyntree-high-level)
+target_link_libraries(${PROJECT_NAME} ${YARP_LIBRARIES} idyntree-high-level idyntree-yarp)
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)

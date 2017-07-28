@@ -19,6 +19,10 @@
 
 #include <yarp/math/Math.h>
 
+#include <iDynTree/Model/Model.h>
+#include <iDynTree/KinDynComputations.h>
+#include <iDynTree/yarp/YARPConversions.h>
+
 #include "robotstatepublisher.h"
 
 using namespace std;
@@ -28,8 +32,28 @@ using namespace yarp::sig;
 using namespace yarp::math;
 
 /************************************************************/
+JointStateSuscriber::JointStateSuscriber(): m_module(nullptr)
+{
+}
+
+/************************************************************/
+void JointStateSuscriber::attach(YARPRobotStatePublisherModule* module)
+{
+    m_module = module;
+}
+
+/************************************************************/
+void JointStateSuscriber::onRead(JointState& v)
+{
+    m_module->onRead(v);
+}
+
+/************************************************************/
 YARPRobotStatePublisherModule::YARPRobotStatePublisherModule(): m_iframetrans(nullptr),
-                                                                m_usingNetworkClock(false)
+                                                                m_usingNetworkClock(false),
+                                                                m_baseFrameName(""),
+                                                                m_baseFrameIndex(iDynTree::FRAME_INVALID_INDEX),
+                                                                m_buf4x4(4,4)
 {
 }
 
@@ -38,12 +62,14 @@ YARPRobotStatePublisherModule::YARPRobotStatePublisherModule(): m_iframetrans(nu
 bool YARPRobotStatePublisherModule::configure(ResourceFinder &rf)
 {
     string name="yarprobotstatepublisher";
+    m_rosNode = new yarp::os::Node("/yarprobotstatepublisher");
     string robot=rf.check("robot",Value("isaacSim")).asString();
-    m_period=rf.check("period",Value(0.016)).asDouble();
+    string modelFileName=rf.check("model",Value("model.urdf")).asString();
+    m_period=rf.check("period",Value(0.010)).asDouble();
 
     Property pTransformclient_cfg;
     pTransformclient_cfg.put("device", "transformClient");
-    pTransformclient_cfg.put("local", "/transformClientTest");
+    pTransformclient_cfg.put("local", "/"+name+"/transformClient");
     pTransformclient_cfg.put("remote", "/transformServer");
 
     bool ok_client = m_ddtransformclient.open(pTransformclient_cfg);
@@ -69,6 +95,47 @@ bool YARPRobotStatePublisherModule::configure(ResourceFinder &rf)
         m_netClock.open("/clock");
     }
 
+    // Open the model
+    string pathToModel=rf.findFileByName(modelFileName);
+    bool ok = m_kinDynComp.loadRobotModelFromFile(pathToModel);
+    if (!ok || !m_kinDynComp.isValid())
+    {
+        yError()<<"Impossible to load file " << pathToModel;
+        close();
+        return false;
+    }
+
+    // Resize the joint pos buffer
+    m_jointPos.resize(m_kinDynComp.model().getNrOfPosCoords());
+
+    // Get the base frame information
+    if (rf.check("base-frame"))
+    {
+        m_baseFrameName = rf.find("base-frame").asString();
+    }
+    else
+    {
+        // If base-frame is not passed, use the default base-frame of the model
+        const iDynTree::Model& model = m_kinDynComp.model();
+        m_baseFrameName = model.getLinkName(model.getDefaultBaseLink());
+    }
+
+    const iDynTree::Model& model = m_kinDynComp.model();
+    m_baseFrameIndex = model.getFrameIndex(m_baseFrameName);
+
+    if (m_baseFrameIndex == iDynTree::FRAME_INVALID_INDEX)
+    {
+        yError()<<"Impossible to find frame " << m_baseFrameName << " in the model";
+        close();
+        return false;
+    }
+
+    // Setup the topic and configureisValid the onRead callback
+    m_jointStateSubscriber = new JointStateSuscriber();
+    m_jointStateSubscriber->attach(this);
+    m_jointStateSubscriber->topic("/joint_states");
+    m_jointStateSubscriber->useCallback();
+
     return true;
 }
 
@@ -76,6 +143,15 @@ bool YARPRobotStatePublisherModule::configure(ResourceFinder &rf)
 /************************************************************/
 bool YARPRobotStatePublisherModule::close()
 {
+    yarp::os::LockGuard guard(m_mutex);
+
+    // Disconnect the topic subscriber
+    if (m_jointStateSubscriber)
+    {
+        m_jointStateSubscriber->interrupt();
+        m_jointStateSubscriber->close();
+        delete m_jointStateSubscriber;
+    }
 
     if (m_ddtransformclient.isValid())
     {
@@ -84,13 +160,9 @@ bool YARPRobotStatePublisherModule::close()
         m_iframetrans = nullptr;
     }
 
-    m_tfMarkersTopic.close();
+    m_baseFrameIndex = iDynTree::FRAME_INVALID_INDEX;
 
-    if (m_pRosNode)
-    {
-        delete m_pRosNode;
-        m_pRosNode = nullptr;
-    }
+    delete m_rosNode;
 
     return true;
 }
@@ -105,99 +177,60 @@ double YARPRobotStatePublisherModule::getPeriod()
 
 
 /************************************************************/
-bool BalanceCoordinator::updateModule()
+bool YARPRobotStatePublisherModule::updateModule()
 {
-    // Publish a green marker on end effectors origin
-    publishEEMarkersToTF();
-
+    // All the actual processing is performed in the onRead callback
     return true;
 }
 
 /************************************************************/
-void BalanceCoordinator::publishEEMarkersToTF()
+void YARPRobotStatePublisherModule::onRead(JointState &v)
 {
-    double yarpTimeStamp;
+    yarp::os::LockGuard guard(m_mutex);
 
-    if (m_usingNetworkClock)
+    // If configure was successful, parse the data
+    if (m_baseFrameIndex == iDynTree::FRAME_INVALID_INDEX)
     {
-        yarpTimeStamp = m_netClock.now();
-    }
-    else
-    {
-       yarpTimeStamp = yarp::os::Time::now();
+        return;
     }
 
-    uint64_t time;
-    uint64_t nsec_part;
-    uint64_t sec_part;
-    TickTime ret;
-    time = (uint64_t)(yarpTimeStamp * 1000000000UL);
-    nsec_part = (time % 1000000000UL);
-    sec_part = (time / 1000000000UL);
-
-    if (sec_part > std::numeric_limits<unsigned int>::max())
+    // Check size
+    if (v.name.size() != m_jointPos.size())
     {
-        yWarning() << "Timestamp exceeded the 64 bit representation, resetting it to 0";
-        sec_part = 0;
+        yError() << "Size mismatch. Model has " << m_jointPos.size()
+                 << " joints, while the received JointState message has " << v.name.size() << " joints.";
+        return;
     }
 
-    visualization_msgs_MarkerArray& markerarray = m_tfMarkersTopic.prepare();
+    // TODO: this part can be drastically speed up.
+    //      Possible improvements:
+    //        * Add a map string --> indeces
+    // Fill the buffer of joints positions
+    const iDynTree::Model& model = m_kinDynComp.model();
+    for (size_t i=0; i < v.name.size(); i++)
+    {
+        iDynTree::JointIndex jntIndex = model.getJointIndex(v.name[i]);
+        if (jntIndex == iDynTree::JOINT_INVALID_INDEX)
+        {
+            yError() << "Impossible to find joint " << v.name[i] << " in the model.";
+            return;
+        }
 
-    markerarray.markers.clear();
+        m_jointPos(model.getJoint(jntIndex)->getDOFsOffset()) = v.position[i];
+    }
 
-    visualization_msgs_Marker markerLEE;
-    markerLEE.header.stamp.sec = (yarp::os::NetUint32) sec_part;
-    markerLEE.header.stamp.nsec = (yarp::os::NetUint32) nsec_part;
-    markerLEE.ns = "balancing_namespace";
-    markerLEE.type = visualization_msgs_Marker::SPHERE;
-    markerLEE.action = visualization_msgs_Marker::ADD;
-    markerLEE.id = 1;
-    markerLEE.pose.position.x = 0.0;
-    markerLEE.pose.position.y = 0.0;
-    markerLEE.pose.position.z = 0.0;
-    markerLEE.pose.orientation.x = 0.0;
-    markerLEE.pose.orientation.y = 0.0;
-    markerLEE.pose.orientation.z = 0.0;
-    markerLEE.pose.orientation.w = 1.0;
-    markerLEE.scale.x = 0.01;
-    markerLEE.scale.y = 0.01;
-    markerLEE.scale.z = 0.01;
-    markerLEE.color.a = 1.0;
-    markerLEE.color.r = 0.0;
-    markerLEE.color.g = 1.0;
-    markerLEE.color.b = 0.0;
+    // Set the updated joint positions
+    m_kinDynComp.setJointPos(m_jointPos);
 
-    // l_gripper marker
-    markerLEE.header.frame_id = "l_gripper";
-    markerarray.markers.push_back(markerLEE);
+    // Publish the frames on TF
+    for (size_t frameIdx=0; frameIdx < model.getNrOfFrames(); frameIdx++)
+    {
+        iDynTree::Transform base_H_frame = m_kinDynComp.getRelativeTransform(m_baseFrameIndex, frameIdx);
+        iDynTree::toYarp(base_H_frame.asHomogeneousTransform(), m_buf4x4);
+        m_iframetrans->setTransform(model.getFrameName(frameIdx),
+                                    model.getFrameName(m_baseFrameIndex),
+                                    m_buf4x4);
+    }
 
-    // r_gripper marker
-    visualization_msgs_Marker markerREE = markerLEE;
-    markerREE.id = 2;
-    markerREE.header.frame_id = "r_gripper";
-    markerarray.markers.push_back(markerREE);
-
-
-    // Desired l_gripper location
-    visualization_msgs_Marker markerLEEdes = markerLEE;
-    markerLEEdes.id = 3;
-    markerLEEdes.color.a = 1.0;
-    markerLEEdes.color.r = 1.0;
-    markerLEEdes.color.g = 0.0;
-    markerLEEdes.color.b = 0.0;
-    markerLEEdes.header.frame_id = "l_gripper";
-    markerarray.markers.push_back(markerLEEdes);
-
-    // Desired r_gripper location
-    visualization_msgs_Marker markerREEdes = markerREE;
-    markerREEdes.id = 4;
-    markerREEdes.color.a = 1.0;
-    markerREEdes.color.r = 1.0;
-    markerREEdes.color.g = 0.0;
-    markerREEdes.color.b = 0.0;
-    markerREEdes.header.frame_id = "r_gripper";
-    markerarray.markers.push_back(markerREEdes);
-
-    // Publish
-    m_tfMarkersTopic.write();
+    return;
 }

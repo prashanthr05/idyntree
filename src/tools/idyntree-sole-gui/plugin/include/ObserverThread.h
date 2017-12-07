@@ -46,6 +46,7 @@ protected:
     yarp::sig::Vector m_desiredJointPositionsInDeg;
     std::string m_primarySole;
     std::string m_secondarySole;
+    double m_distanceBetweenFeet = 0.0;
 
     // Attribute to read pressure sensors
     bool m_skip_pressure;

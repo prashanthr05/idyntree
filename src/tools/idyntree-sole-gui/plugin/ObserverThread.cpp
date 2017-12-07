@@ -11,12 +11,15 @@
 
 #include <yarp/os/LogStream.h>
 #include <yarp/os/Time.h>
+#include <yarp/math/Math.h>
 
 #include <iDynTree/Core/VectorDynSize.h>
 #include <iDynTree/Core/Direction.h>
 #include <iDynTree/ConvexHullHelpers.h>
 #include <iDynTree/Model/Model.h>
 #include <iDynTree/ModelIO/ModelLoader.h>
+#include <iDynTree/yarp/YARPConversions.h>
+
 
 #include <QPainter>
 
@@ -24,6 +27,7 @@
 
 
 using namespace yarp::os;
+using namespace yarp::math;
 
 void addVectorOfStringToProperty(yarp::os::Property& prop, std::string key, std::vector<std::string> & list)
 {
@@ -379,7 +383,12 @@ void ObserverThread::run()
     // Compute the desired com in the primarySole frame
     m_kinDyn.setJointPos(m_desiredJointPositionsInRad);
     m_desiredComInPrimarySole = m_kinDyn.getRelativeTransform(m_primarySole, model.getLinkName(model.getDefaultBaseLink()))*m_kinDyn.getCenterOfMassPosition();
-
+    
+    
+    yarp::sig::Vector r_sole_pos;
+    iDynTree::Position x = m_kinDyn.getRelativeTransform("l_sole", "r_sole").getPosition();
+    //iDynTree::toYarp(x, r_sole_pos);
+    m_distanceBetweenFeet = sqrt(x(0)*x(0) + x(1)*x(1) + x(2)*x(2));
 
 }
 
@@ -468,8 +477,8 @@ void ObserverThread::draw(QPainter* qpainter, int widthInPixels, int heightInPix
     pen.setColor(QColor("green"));
     qpainter->setPen(pen);
 
-    double safetyMarginX = 0.012;
-    double safetyMarginY = 0.0095;
+    double safetyMarginX = 0.022;
+    double safetyMarginY = 0.0325;//0.0325;
 
     double soleWidth = 0.028;   // along y-direction
     double soleLength = 0.048;  // along x-direction
@@ -477,22 +486,26 @@ void ObserverThread::draw(QPainter* qpainter, int widthInPixels, int heightInPix
 
     double front, back, left, right;
 
-    front = soleLength/2 + xOffset;
-    back = soleLength/2 - xOffset;
+    front = soleLength/2;
+    back = soleLength/2;
     left = soleWidth/2;
     right = left;
-
+    
+    yInfo() << "Distance between foot: " << m_distanceBetweenFeet;
+    
     iDynTree::Polygon primarySolePolygonInPrimarySole = iDynTree::Polygon::XYRectangleFromOffsets(front, back, left, right);
     iDynTree::Polygon secondarySolePolygonInSecondarySole = iDynTree::Polygon::XYRectangleFromOffsets(front, back, left, right);
-    iDynTree::Polygon primarySolePolygonWithSafetyInPrimarySole  = iDynTree::Polygon::XYRectangleFromOffsets(front - safetyMarginX, back - safetyMarginX, left - safetyMarginY, right - safetyMarginY);
-    iDynTree::Polygon secondarySolePolygonWithSafetyInSecondarySole = iDynTree::Polygon::XYRectangleFromOffsets(front - safetyMarginX, back - safetyMarginX, left - safetyMarginY, right - safetyMarginY);
+    iDynTree::Polygon primarySolePolygonWithSafetyInPrimarySole  = iDynTree::Polygon::XYRectangleFromOffsets(soleLength/2 - safetyMarginX, -(-soleLength/2 + safetyMarginX), soleWidth/2 - safetyMarginY, -(- m_distanceBetweenFeet - (soleWidth/2) + safetyMarginY));
+    //    iDynTree::Polygon primarySolePolygonWithSafetyInPrimarySole  = iDynTree::Polygon::XYRectangleFromOffsets(0.02, 0.02, 0.02, 0.02);
+
+//    iDynTree::Polygon secondarySolePolygonWithSafetyInSecondarySole = iDynTree::Polygon::XYRectangleFromOffsets(front - safetyMarginX, back - safetyMarginX, left - safetyMarginY, right - safetyMarginY);
 //    iDynTree::Polygon primarySolePolygonInPrimarySole = iDynTree::Polygon::XYRectangleFromOffsets(0.025, 0.015, 0.01, 0.01);
 //    iDynTree::Polygon secondarySolePolygonInSecondarySole = iDynTree::Polygon::XYRectangleFromOffsets(0.025, 0.015, 0.01, 0.01);
 //    iDynTree::Polygon primarySolePolygonWithSafetyInPrimarySole  = iDynTree::Polygon::XYRectangleFromOffsets(0.025-safetyMarginX, 0.015-safetyMarginX, 0.01-safetyMarginY, 0.01-safetyMarginY);
 //    iDynTree::Polygon secondarySolePolygonWithSafetyInSecondarySole = iDynTree::Polygon::XYRectangleFromOffsets(0.025-safetyMarginX, 0.015-safetyMarginX, 0.01-safetyMarginY, 0.01-safetyMarginY);
 
     iDynTree::Polygon secondarySolePolygonInPrimarySole = secondarySolePolygonInSecondarySole.applyTransform(m_primarySole_X_secondarySole);
-    iDynTree::Polygon secondarySolePolygonWithSafetyInPrimarySole = secondarySolePolygonWithSafetyInSecondarySole.applyTransform(m_primarySole_X_secondarySole);
+//    iDynTree::Polygon secondarySolePolygonWithSafetyInPrimarySole = secondarySolePolygonWithSafetyInSecondarySole.applyTransform(m_primarySole_X_secondarySole);
 
     // Build convexhull
     iDynTree::ConvexHullProjectionConstraint m_convexHullSoles;
@@ -504,7 +517,7 @@ void ObserverThread::draw(QPainter* qpainter, int widthInPixels, int heightInPix
     polygons.push_back(secondarySolePolygonInSecondarySole);
     std::vector<iDynTree::Polygon>   polygonsWithSafety;
     polygonsWithSafety.push_back(primarySolePolygonWithSafetyInPrimarySole);
-    polygonsWithSafety.push_back(secondarySolePolygonWithSafetyInSecondarySole);
+    //polygonsWithSafety.push_back(secondarySolePolygonWithSafetyInSecondarySole);
     m_convexHullSoles.buildConvexHull(iDynTree::Direction(1.0, 0.0, 0.0),
                                       iDynTree::Direction(0.0, 1.0, 0.0),
                                       iDynTree::Position::Zero(),
@@ -528,7 +541,7 @@ void ObserverThread::draw(QPainter* qpainter, int widthInPixels, int heightInPix
     pen.setColor(QColor("lime"));
     qpainter->setPen(pen);
     this->drawPolygon(qpainter, primarySolePolygonWithSafetyInPrimarySole);
-    this->drawPolygon(qpainter, secondarySolePolygonWithSafetyInPrimarySole);
+    //this->drawPolygon(qpainter, secondarySolePolygonWithSafetyInPrimarySole);
 
     // Draw pressure pads
     double padsSize = 0.0003;

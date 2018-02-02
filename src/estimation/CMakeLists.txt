@@ -1,6 +1,10 @@
-# Copyright: (C) 2015 Fondazione Istituto Italiano di Tecnologia
-# Authors: Silvio Traversaro
-# CopyPolicy: Released under the terms of the LGPLv2.1 or later, see LGPL.TXT
+# Copyright (C) 2015 Fondazione Istituto Italiano di Tecnologia
+#
+# Licensed under either the GNU Lesser General Public License v3.0 :
+# https://www.gnu.org/licenses/lgpl-3.0.html
+# or the GNU Lesser General Public License v2.1 :
+# https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+# at your option.
 
 project(iDynTree_Estimation CXX)
 
@@ -10,7 +14,10 @@ set(IDYNTREE_ESTIMATION_HEADERS include/iDynTree/Estimation/BerdyHelper.h
                                 include/iDynTree/Estimation/ExternalWrenchesEstimation.h
                                 include/iDynTree/Estimation/ExtWrenchesAndJointTorquesEstimator.h
                                 include/iDynTree/Estimation/SimpleLeggedOdometry.h
-                                include/iDynTree/Estimation/BerdySparseMAPSolver.h)
+                                include/iDynTree/Estimation/BerdySparseMAPSolver.h
+                                include/iDynTree/Estimation/SchmittTrigger.h
+                                include/iDynTree/Estimation/ContactStateMachine.h
+                                include/iDynTree/Estimation/BipedFootContactClassifier.h)
 
 set(IDYNTREE_ESTIMATION_PRIVATE_INCLUDES )
 
@@ -18,7 +25,10 @@ set(IDYNTREE_ESTIMATION_SOURCES src/BerdyHelper.cpp
                                 src/ExternalWrenchesEstimation.cpp
                                 src/ExtWrenchesAndJointTorquesEstimator.cpp
                                 src/SimpleLeggedOdometry.cpp
-                                src/BerdySparseMAPSolver.cpp)
+                                src/BerdySparseMAPSolver.cpp
+                                src/SchmittTrigger.cpp
+                                src/ContactStateMachine.cpp
+                                src/BipedFootContactClassifier.cpp)
 
 SOURCE_GROUP("Source Files" FILES ${IDYNTREE_ESTIMATION_SOURCES})
 SOURCE_GROUP("Header Files" FILES ${IDYNTREE_ESTIMATION_HEADERS})

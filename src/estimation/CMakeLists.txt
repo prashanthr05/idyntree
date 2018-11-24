@@ -16,7 +16,8 @@ set(IDYNTREE_ESTIMATION_HEADERS include/iDynTree/Estimation/BerdyHelper.h
                                 include/iDynTree/Estimation/SchmittTrigger.h
                                 include/iDynTree/Estimation/ContactStateMachine.h
                                 include/iDynTree/Estimation/BipedFootContactClassifier.h
-                                include/iDynTree/Estimation/GravityCompensationHelpers.h)
+                                include/iDynTree/Estimation/GravityCompensationHelpers.h
+                                include/iDynTree/Estimation/AttitudeEstimator.h)
 
 set(IDYNTREE_ESTIMATION_PRIVATE_INCLUDES )
 
@@ -28,7 +29,8 @@ set(IDYNTREE_ESTIMATION_SOURCES src/BerdyHelper.cpp
                                 src/SchmittTrigger.cpp
                                 src/ContactStateMachine.cpp
                                 src/BipedFootContactClassifier.cpp
-                                src/GravityCompensationHelpers.cpp)
+                                src/GravityCompensationHelpers.cpp
+                                src/AttitudeEstimator.cpp)
 
 SOURCE_GROUP("Source Files" FILES ${IDYNTREE_ESTIMATION_SOURCES})
 SOURCE_GROUP("Header Files" FILES ${IDYNTREE_ESTIMATION_HEADERS})

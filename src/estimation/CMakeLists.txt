@@ -20,7 +20,9 @@ set(IDYNTREE_ESTIMATION_HEADERS include/iDynTree/Estimation/BerdyHelper.h
                                 include/iDynTree/Estimation/ExtendedKalmanFilter.h
                                 include/iDynTree/Estimation/AttitudeEstimator.h
                                 include/iDynTree/Estimation/AttitudeMahonyFilter.h
-                                include/iDynTree/Estimation/AttitudeQuaternionEKF.h)
+                                include/iDynTree/Estimation/AttitudeQuaternionEKF.h
+                                include/iDynTree/Estimation/FloatingBaseEstimator.h
+                                include/iDynTree/Estimation/RotellaBaseEstimator.h)
 
 set(IDYNTREE_ESTIMATION_PRIVATE_INCLUDES include/iDynTree/Estimation/AttitudeEstimatorUtils.h)
 
@@ -37,7 +39,9 @@ set(IDYNTREE_ESTIMATION_SOURCES src/BerdyHelper.cpp
                                 src/AttitudeEstimator.cpp
                                 src/AttitudeEstimatorUtils.cpp
                                 src/AttitudeMahonyFilter.cpp
-                                src/AttitudeQuaternionEKF.cpp)
+                                src/AttitudeQuaternionEKF.cpp
+                                src/FloatingBaseEstimator.cpp
+                                src/RotellaBaseEstimator.cpp)
 
 SOURCE_GROUP("Source Files" FILES ${IDYNTREE_ESTIMATION_SOURCES})
 SOURCE_GROUP("Header Files" FILES ${IDYNTREE_ESTIMATION_HEADERS})

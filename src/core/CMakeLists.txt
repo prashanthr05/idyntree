@@ -55,7 +55,8 @@ set(IDYNTREE_CORE_EXP_HEADERS include/iDynTree/Core/Axis.h
                               include/iDynTree/Core/SparseMatrix.h
                               include/iDynTree/Core/Triplets.h
                               include/iDynTree/Core/CubicSpline.h
-                              include/iDynTree/Core/Span.h)
+                              include/iDynTree/Core/Span.h
+                              include/iDynTree/Core/SO3Interpolation.h)
 
 
 set(IDYNTREE_CORE_EXP_SOURCES src/Axis.cpp
@@ -95,7 +96,8 @@ set(IDYNTREE_CORE_EXP_SOURCES src/Axis.cpp
                               src/PrivateUtils.cpp
                               src/SparseMatrix.cpp
                               src/Triplets.cpp
-                              src/CubicSpline.cpp)
+                              src/CubicSpline.cpp
+                              src/SO3Interpolation.cpp)
 
 SOURCE_GROUP("Source Files" FILES ${IDYNTREE_CORE_EXP_SOURCES})
 SOURCE_GROUP("Header Files" FILES ${IDYNTREE_CORE_EXP_HEADERS})

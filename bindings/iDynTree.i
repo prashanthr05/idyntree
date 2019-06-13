@@ -72,6 +72,7 @@
 #include "iDynTree/Core/Transform.h"
 #include "iDynTree/Core/TransformDerivative.h"
 #include "iDynTree/Core/Span.h"
+#include "iDynTree/Core/SO3Interpolation.h"
 
 // Model related data structures
 #include "iDynTree/Model/Indices.h"
@@ -263,7 +264,9 @@ TEMPLATE_WRAP_MOTION_FORCE(ForceVector3, WRAP_FORCE, SET_NAME_FOR_WRAPPER,,)
 %include "iDynTree/Core/TransformDerivative.h"
 %include "iDynTree/Core/Span.h"
 
+%template(RotationVector) std::vector<iDynTree::Rotation>;
 %template(DynamicSpan) iDynTree::Span<double, iDynTree::dynamic_extent>;
+%include "iDynTree/Core/SO3Interpolation.h"
 
 // Model related data structures
 %include "iDynTree/Model/Indices.h"

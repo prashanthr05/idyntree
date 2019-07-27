@@ -99,6 +99,7 @@ namespace iDynTree
          * @return bool true/false if successful or not
          */
         virtual bool ekfComputeJacobianF(iDynTree::VectorDynSize& x, iDynTree::MatrixDynSize& F) = 0;
+        virtual bool ekfComputeJacobianF(iDynTree::VectorDynSize& x, iDynTree::VectorDynSize& u,  iDynTree::MatrixDynSize& F) = 0;
 
         /**
          * @brief Describes the measurement Jacobian necessary for computing Kalman gain and updating the predicted state and its covariance
@@ -152,6 +153,7 @@ namespace iDynTree
          * @return bool true/false if successful or not
          */
         bool ekfInit();
+        bool ekfInit(const size_t& state_size, const size_t& input_size, const size_t& output_size);
 
         /**
          * @brief Resets the filter flags
@@ -160,6 +162,21 @@ namespace iDynTree
          * The other flags include the checks on whether the input and measurement vectors were updated at every prediction/update step
          */
         void ekfReset();
+
+        /**
+         * @brief Resets the filter flags, initializes and resizes internal buffers of the filter, and
+         *             sets initial state, initial state covariance, and system noise and measurement noise covariance matrices
+         * @note this method is particularly useful while working with hybrid systems,
+         *             where the size of the system state or the measurements keep evolving with time
+         *
+         */
+        bool ekfReset(const size_t& state_size,
+                                 const size_t& input_size,
+                                 const size_t& output_size,
+                                 const iDynTree::Span<double>& x0,
+                                 const iDynTree::Span<double>& P0,
+                                 const iDynTree::Span<double>& Q,
+                                 const iDynTree::Span<double>& R);
 
         /**
          * @brief Set measurement vector at every time step
@@ -254,7 +271,14 @@ namespace iDynTree
          */
         bool ekfGetStateCovariance(const iDynTree::Span<double> &P) const;
 
-    private:
+        /**
+        * function template to ignore unused parameters
+        */
+        template <typename T>
+        void ignore(T &&)
+        { }
+
+            private:
         size_t m_dim_X;                                ///< state dimension
         size_t m_dim_Y;                                ///< output dimenstion
         size_t m_dim_U;                                ///< input dimension

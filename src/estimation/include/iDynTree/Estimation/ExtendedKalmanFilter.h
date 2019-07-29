@@ -74,8 +74,8 @@ namespace iDynTree
          * @return bool true/false if successful or not
          */
         virtual bool ekf_f(const iDynTree::VectorDynSize& x_k,
-                       const iDynTree::VectorDynSize& u_k,
-                             iDynTree::VectorDynSize& xhat_k_plus_one) = 0;
+                                      const iDynTree::VectorDynSize& u_k,
+                                      iDynTree::VectorDynSize& xhat_k_plus_one) = 0;
 
         /**
          * @brief Describes the measurement model of the system,
@@ -88,7 +88,7 @@ namespace iDynTree
          * @return bool true/false if successful or not
          */
         virtual bool ekf_h(const iDynTree::VectorDynSize& xhat_k_plus_one,
-                             iDynTree::VectorDynSize& zhat_k_plus_one) = 0;
+                                      iDynTree::VectorDynSize& zhat_k_plus_one) = 0;
 
         /**
          * @brief Describes the system Jacobian necessary for the propagation of predicted state covariance
@@ -278,7 +278,19 @@ namespace iDynTree
         void ignore(T &&)
         { }
 
-            private:
+        /**
+         * Experimental section - handles only non linear states expressible in vector representations e.g. quaternions
+         */
+        typedef std::pair<size_t, size_t> NonLinearTypeIndexRange;   ///< range of vector indices, as a std::pair, to indicate the starting and ending index of non-linear states in the state/measurement vector
+        bool ekfSetCompositeStateIndices(const std::vector<NonLinearTypeIndexRange>& non_linear_states_range,
+                                                                    const std::function<iDynTree::VectorDynSize(const iDynTree::VectorDynSize&, const iDynTree::VectorDynSize&)>& boxPlus);
+        bool ekfSetCompositeMeasurementIndices(const std::vector<NonLinearTypeIndexRange> non_linear_measurements_range,
+                                                                                  const std::function<iDynTree::VectorDynSize(const iDynTree::VectorDynSize&, const iDynTree::VectorDynSize&)>& boxMinus);
+        bool ekfUpdate(bool use_composite_system);
+
+        private:
+        bool checksBeforeUpdate();
+
         size_t m_dim_X;                                ///< state dimension
         size_t m_dim_Y;                                ///< output dimenstion
         size_t m_dim_U;                                ///< input dimension
@@ -300,7 +312,25 @@ namespace iDynTree
         bool m_input_updated{false};                   ///< flag to check if control input is updated at each prediction step
         bool m_initial_state_set{false};               ///< flag to check if the initial state of the filter is set
         bool m_initial_state_covariance_set{false};    ///< flag to check if the initial covariance is set properly
+
+        /**
+         * Experimental section
+         */
+        bool checkRangeIndices(const NonLinearTypeIndexRange& in, size_t VecSize);
+        bool inRange(const size_t idx, const NonLinearTypeIndexRange& range);
+        bool assignIndexRange(const std::vector<NonLinearTypeIndexRange>& range,  iDynTree::VectorDynSize& vec);
+
+        bool m_use_composite_system_state{false};     ///< flag to have a system containing state/measurements in vector(linear) space or non-linear spaces
+        bool m_use_composite_system_measurement{false};     ///< flag to have a system containing state/measurements in vector(linear) space or non-linear spaces
+
+        iDynTree::VectorDynSize m_x_type_map;                         ///< a static map to differentiate linear states (0) from non-linear states (1) -> can handle only one type of non-linear state at the moment
+        std::vector<NonLinearTypeIndexRange> m_nonlinear_state_ranges;
+        iDynTree::VectorDynSize m_y_type_map;                         ///< a static map to differentiate  linear measurements (0) from non-linear measurements (1) -> can handle only one type of non-linear measurement at the moment
+        std::vector<NonLinearTypeIndexRange> m_nonlinear_measurement_ranges;
+        std::function<iDynTree::VectorDynSize(const iDynTree::VectorDynSize&, const iDynTree::VectorDynSize&)> m_box_plus; ///< box plus operator implementing exp(.) and composition(.) in sequence
+         std::function<iDynTree::VectorDynSize(const iDynTree::VectorDynSize&, const iDynTree::VectorDynSize&)> m_box_minus; ///< box minus operator implementing inverse_composition(.) and log(.) in sequence
     };
+
 }
 
 #endif

@@ -149,7 +149,7 @@ bool iDynTree::DiscreteExtendedKalmanFilterHelper::ekfPredict()
     return true;
 }
 
-bool iDynTree::DiscreteExtendedKalmanFilterHelper::ekfUpdate()
+bool iDynTree::DiscreteExtendedKalmanFilterHelper::checksBeforeUpdate()
 {
     if (!m_is_initialized)
     {
@@ -172,6 +172,16 @@ bool iDynTree::DiscreteExtendedKalmanFilterHelper::ekfUpdate()
     if (!m_measurement_updated)
     {
         iDynTree::reportError("DiscreteExtendedKalmanFilterHelper", "ekfUpdate", "measurements not updated.");
+        return false;
+    }
+
+    return true;
+}
+
+bool iDynTree::DiscreteExtendedKalmanFilterHelper::ekfUpdate()
+{
+     if (!checksBeforeUpdate())
+    {
         return false;
     }
 
@@ -317,6 +327,163 @@ bool iDynTree::DiscreteExtendedKalmanFilterHelper::ekfGetStateCovariance(const i
         P(i) = m_P.data()[i];
     }
 
+    return true;
+}
+
+/**
+ * Experimental section
+ */
+bool iDynTree::DiscreteExtendedKalmanFilterHelper::checkRangeIndices(const NonLinearTypeIndexRange& in, size_t VecSize)
+{
+    if (in.second >= VecSize ) { return false; }
+    if (in.first >= in.second) { return false; }
+    return true;
+}
+
+bool iDynTree::DiscreteExtendedKalmanFilterHelper::inRange(const size_t idx, const NonLinearTypeIndexRange& range)
+{
+    if (!(idx >= range.first && idx <= range.second)) { return false; }
+    return true;
+}
+
+bool iDynTree::DiscreteExtendedKalmanFilterHelper::assignIndexRange(const std::vector<NonLinearTypeIndexRange>& range,
+                                                                                                                        iDynTree::VectorDynSize& vec)
+{
+    bool loop_not_broken{true};
+    for (auto& elem : range)
+    {
+        if (!checkRangeIndices(elem, vec.size()))
+        {
+            loop_not_broken = false;
+            break;
+        }
+
+        int range_size = static_cast<int>(elem.second - elem.first + 1);
+        iDynTree::toEigen(vec).segment(elem.first, range_size) = Eigen::VectorXd::Ones(range_size);
+    }
+
+    if (!loop_not_broken)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool iDynTree::DiscreteExtendedKalmanFilterHelper::ekfSetCompositeStateIndices(const std::vector<NonLinearTypeIndexRange>& non_linear_states_range,
+                                                                                                                                           const std::function<iDynTree::VectorDynSize (const iDynTree::VectorDynSize &, const iDynTree::VectorDynSize &)>& boxPlus)
+{
+    if (m_use_composite_system_state)
+    {
+         iDynTree::reportError("DiscreteExtendedKalmanFilterHelper",  "ekfSetCompositeStateIndices", "composite state indices already set, if you want to reset the indices, reinitalize the filter from scratch");
+        return false;
+    }
+
+    if (m_dim_X == 0 || m_x.size() == 0 || m_dim_X != m_x.size())
+    {
+        iDynTree::reportError("DiscreteExtendedKalmanFilterHelper",  "ekfSetCompositeStateIndices", "please call this function after calling ekfInit");
+        return false;
+    }
+
+    m_x_type_map.resize(m_x.size());
+    m_x_type_map.zero();
+
+    if (!assignIndexRange(non_linear_states_range, m_x_type_map))
+    {
+         iDynTree::reportError("DiscreteExtendedKalmanFilterHelper",  "ekfSetCompositeStateIndices", "NonLinearTypeIndexRange mismatch");
+        return false;
+    }
+
+    m_nonlinear_state_ranges.resize(non_linear_states_range.size());
+    m_nonlinear_measurement_ranges = non_linear_states_range;
+    m_box_plus = boxPlus;
+
+    m_use_composite_system_state = true;
+    return true;
+}
+
+bool iDynTree::DiscreteExtendedKalmanFilterHelper::ekfSetCompositeMeasurementIndices(const std::vector<NonLinearTypeIndexRange> non_linear_measurements_range,
+                                                                                                                                                         const std::function<iDynTree::VectorDynSize (const iDynTree::VectorDynSize &, const iDynTree::VectorDynSize &)>& boxMinus)
+{
+     if (m_use_composite_system_measurement)
+    {
+         iDynTree::reportError("DiscreteExtendedKalmanFilterHelper",  "ekfSetCompositeMeasurementIndices", "composite measurement indices already set, if you want to reset the indices, reinitalize the filter from scratch");
+        return false;
+    }
+
+    if (m_dim_Y == 0 || m_y.size() == 0 || m_dim_Y != m_y.size())
+    {
+        iDynTree::reportError("DiscreteExtendedKalmanFilterHelper",  "ekfSetCompositeMeasurementIndices", "please call this function after calling ekfInit");
+        return false;
+    }
+
+    m_y_type_map.resize(m_y.size());
+    m_y_type_map.zero();
+
+   if (!assignIndexRange(non_linear_measurements_range, m_y_type_map))
+    {
+         iDynTree::reportError("DiscreteExtendedKalmanFilterHelper",  "ekfSetCompositeStateIndices", "NonLinearTypeIndexRange mismatch");
+        return false;
+    }
+
+    m_nonlinear_measurement_ranges.resize(non_linear_measurements_range.size());
+    m_nonlinear_measurement_ranges = non_linear_measurements_range;
+    m_box_minus = boxMinus;
+
+    m_use_composite_system_measurement = true;
+    return true;
+}
+
+bool iDynTree::DiscreteExtendedKalmanFilterHelper::ekfUpdate(bool use_composite_system)
+{
+    if (!checksBeforeUpdate())
+    {
+        return false;
+    }
+
+    if(!use_composite_system)
+    {
+        return ekfUpdate();
+    }
+
+    if (!m_use_composite_system_state)
+    {
+        iDynTree::reportError("DiscreteExtendedKalmanFilterHelper",  "ekfUpdate", "composite state indices not initialized");
+        return false;
+    }
+
+    if (!m_use_composite_system_measurement)
+    {
+        iDynTree::reportError("DiscreteExtendedKalmanFilterHelper",  "ekfUpdate", "composite measurement indices not initialized");
+        return false;
+    }
+
+    iDynTree::VectorDynSize z;
+    z.resize(m_dim_Y);
+    ekf_h(m_xhat, z);                             ///< \f$ z_{k+1} = h(\hat{x}_{k+1}) \f$
+    ekfComputeJacobianH(m_xhat, m_H);            ///< \f$ H \mid_{x = \hat{x}_{k+1}} \f$
+
+    using iDynTree::toEigen;
+    auto P(toEigen(m_P));
+    auto Phat(toEigen(m_Phat));
+    auto S(toEigen(m_S));
+    auto K(toEigen(m_K));
+    auto H(toEigen(m_H));
+    auto R(toEigen(m_R));
+    auto x(toEigen(m_x));
+    auto xhat(toEigen(m_xhat));
+
+    ///< TODO Change this to use the nonlinear index map and use the boxMinus operator
+    auto y(toEigen(m_y) - toEigen(z));        ///< innovation \f$ \tilde{y}_{k+1} = y_{k+1} - z_{k+1} \f$
+
+    S = H*Phat*H.transpose() + R;             ///< \f$ S_{k+1} = H_{k+1} \hat{P}_{k+1} H_{k+1}^T + R \f$
+    K = Phat*H.transpose()*S.inverse();       ///< \f$ K_{k+1} = \hat{P}_{k+1} H_{k+1}^T S_{k+1}^{-1} \f$
+    P = Phat - (K*H*Phat);                    ///< \f$ P_{k+1} = \hat{P}_{k+1} - (K_{k+1} H \hat{P}_{k+1}) \f$
+
+    ///< TODO Change this to use the nonlinear index map and use the boxPlus operator
+    x = xhat + K*y;                           ///< \f$ x_{k+1} = \hat{x}_{k+1} + K_{k+1} \tilde{y}_{k+1} \f$
+
+    m_measurement_updated = false;
     return true;
 }
 
